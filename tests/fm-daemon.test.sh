@@ -1389,7 +1389,9 @@ test_housekeeping_herdr_idle_busy_record_clears_stale() {
       [ "$2" = "default:w1:p4" ] || fail "expected herdr busy target, got $2"
       printf 'idle'
     }
+    # shellcheck disable=SC2329 # Invoked indirectly by housekeeping under test.
     fm_backend_target_exists() { return 0; }
+    # shellcheck disable=SC2329 # Invoked indirectly by housekeeping under test.
     fm_backend_agent_state() { printf 'unreadable'; }
     fm_backend_capture herdr default:w1:p4 40 >/dev/null
     [ "$(fm_backend_busy_state herdr default:w1:p4)" = idle ] || fail "herdr busy stub did not report idle"
@@ -1419,7 +1421,9 @@ test_housekeeping_herdr_resumed_stale_cleared() {
       [ "$2" = "default:w1:p3" ] || fail "expected herdr busy target, got $2"
       printf 'busy'
     }
+    # shellcheck disable=SC2329 # Invoked indirectly by housekeeping under test.
     fm_backend_target_exists() { return 0; }
+    # shellcheck disable=SC2329 # Invoked indirectly by housekeeping under test.
     fm_backend_agent_state() { printf 'unreadable'; }
     fm_backend_capture herdr default:w1:p3 40 >/dev/null
     [ "$(fm_backend_busy_state herdr default:w1:p3)" = busy ] || fail "herdr busy stub did not report busy"
