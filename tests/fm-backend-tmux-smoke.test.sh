@@ -164,6 +164,25 @@ if ! tmux display-message -p -t "$SESSION:fm-prefix.$PANE_INDEX" '#{pane_id}' >/
 fi
 fm_backend_explicit_target_exists tmux "$SESSION:fm-prefix.$PANE_INDEX" \
   || fail "a pane-qualified explicit target whose window is live must read as present"
+PREFIX_PANE_ID=$(tmux display-message -p -t "$SESSION:fm-prefix" '#{pane_id}')
+[ -n "$PREFIX_PANE_ID" ] || fail "real tmux: could not read the fm-prefix pane id"
+fm_backend_explicit_target_exists tmux "$SESSION:fm-prefix.$PREFIX_PANE_ID" \
+  || fail "a pane-id-qualified explicit target whose pane is live must read as present"
+fm_backend_explicit_target_exists tmux "$SESSION:fm-prefix" \
+  || fail "a plain explicit window target must read as present"
+# A window whose literal name contains a dot is not addressable as a pane
+# target: tmux splits at the dot and cannot route the name, so the explicit arm
+# reads it absent even though the recorded-window arm keeps it present.
+tmux new-window -d -t "$SESSION:" -n 'fm-dotted.id' \
+  || fail "real tmux: could not create the fm-dotted.id window"
+if tmux list-panes -t "$SESSION:fm-dotted.id" -F '#{pane_id}' >/dev/null 2>&1; then
+  fail "fixture drifted: real tmux must not route a dotted window name as a pane target"
+fi
+fm_backend_target_exists tmux "$SESSION:fm-dotted.id" \
+  || fail "the recorded-window arm must read a live dotted window name as present"
+if fm_backend_explicit_target_exists tmux "$SESSION:fm-dotted.id"; then
+  fail "a dotted window name tmux cannot route as a pane target must read absent"
+fi
 # tmux resolves an out-of-range pane index or id to the window's active pane and
 # still exits 0, so a pane the window does not hold must be proved from the
 # window's pane inventory and read absent.

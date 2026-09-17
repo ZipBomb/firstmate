@@ -358,33 +358,28 @@ fm_backend_tmux_target_present() {  # <target>
 
 # fm_backend_tmux_explicit_target_present: the explicit-target sibling of
 # fm_backend_tmux_target_present, for a target the OPERATOR typed rather than a
-# window name firstmate recorded. The two must not share one rule, because a
-# pane-qualified target and a dotted recorded window name are the same string:
-# `<sess>:fm-held.0` names the recorded worker window `fm-held.0`, and
-# `<sess>:mywin.0` asks tmux for pane 0 of window `mywin`. tmux resolves the
-# first by exact window name and falls back to the second, so a single rule
-# either hides a vanished dotted worker window (the fleet-loss incident this
-# probe exists to fix) or rejects every legitimate pane-qualified operator
-# target. The strict rule therefore stays on the recorded-window path
-# (fm_backend_tmux_target_present), and only callers that are given a target by
-# an operator - bin/fm-send.sh's explicit target and the away-mode daemon's
-# supervisor target - use this one.
-# Shapes, all proved through tmux's own answer and never by the addressed call
-# alone:
-#   - a bare address (session name, or the daemon's "%N" pane id) keeps the
-#     shared rule: a nonempty resolved pane id;
-#   - a target whose window field is a live window of the exact session is
-#     present, which includes a window whose literal name contains dots, since
-#     tmux resolves an exact window name before any pane qualifier;
-#   - a `<sess>:<window>.<pane>` target is present only when the window field
-#     before the last dot is itself a live window of the exact session AND the
-#     requested pane appears in that window's own pane inventory, read in the
-#     field the qualifier names (pane_index for a numeric pane, pane_id for a
-#     "%N" pane). tmux resolves an out-of-range pane to the window's active pane
-#     and still exits 0, so the window field alone would let `<sess>:mywin.5`
-#     and `<sess>:mywin.%999` read present; the window field is also what makes
-#     a target naming an absent window absent (`<sess>:no-such.0`) instead of
-#     letting tmux answer with the session's active window.
+# window name firstmate recorded. tmux's PANE resolution splits a target at its
+# last dot, so `<sess>:fm-held.0` asks for pane 0 of window `fm-held`, while the
+# recorded-window arm must read that same string as the literal window name a
+# dotted task id records. The strict literal rule therefore stays on the
+# recorded-window path (fm_backend_tmux_target_present), and only callers that
+# are given a target by an operator - bin/fm-send.sh's explicit target and the
+# away-mode daemon's supervisor target - use this one.
+# Resolution is left to tmux and its answer is then required to name exactly
+# what was asked for:
+#   - `tmux list-panes -t <target>` is the deliverability proof. It hard-fails
+#     for a window, pane, or session the raw target cannot route, where
+#     `display-message` silently answers from the window's active pane (and, for
+#     a pane id that lives in another window, even names that other pane);
+#   - the window field before the last dot must be a live window of the exact
+#     session, in the field the address names (window_name, window_index, or
+#     window_id), so tmux's unique-prefix resolution cannot stand a neighbor in
+#     for the absent window that was asked for;
+#   - a pane qualifier must appear in that window's own pane inventory, read in
+#     the field the qualifier names (pane_index for a numeric pane, pane_id for
+#     a "%N" pane);
+#   - a bare address keeps the shared rule for "%N" pane ids and "@N" window
+#     ids, and requires a bare session name to match exactly.
 # Read-only and cheap: it never starts a server or session. Any read failure is
 # absence, because this is a presence probe.
 fm_backend_tmux_explicit_target_present() {  # <target>
@@ -392,44 +387,49 @@ fm_backend_tmux_explicit_target_present() {  # <target>
   case "$target" in
     # A two-colon or empty-part target names no single window.
     *:*:*|'':*|*:'') return 1 ;;
-    *:*) ;;
-    *)
+  esac
+  case "$target" in
+    *:*)
+      session=${target%%:*}
+      window=${target#*:}
+      window=${window#=}
+      case "$window" in
+        *.*) winpart=${window%.*}; pane=${window##*.} ;;
+        *) winpart=$window; pane= ;;
+      esac
+      [ -n "$winpart" ] || return 1
+      # tmux's own pane resolution proves the raw target is deliverable; it
+      # never substitutes another pane the way display-message does.
+      LC_ALL=C tmux list-panes -t "$target" -F '#{pane_id}' >/dev/null 2>&1 || return 1
+      # The window before the pane qualifier must be the exact window named.
+      session="=${session#=}"
+      fm_backend_tmux_target_present "$session:$winpart" || return 1
+      [ -n "$pane" ] || return 0
+      case "$pane" in
+        '%'[0-9]*) ;;
+        *[!0-9]*) return 1 ;;
+      esac
+      wid=$(tmux display-message -p -t "$session:$winpart" '#{window_id}' 2>/dev/null) || return 1
+      [ -n "$wid" ] || return 1
+      case "$pane" in
+        '%'*) panes=$(LC_ALL=C tmux list-panes -t "$wid" -F '#{pane_id}' 2>/dev/null) || return 1 ;;
+        *) panes=$(LC_ALL=C tmux list-panes -t "$wid" -F '#{pane_index}' 2>/dev/null) || return 1 ;;
+      esac
+      printf '%s\n' "$panes" | grep -Fqx -- "$pane"
+      ;;
+    '%'[0-9]*)
       resolved=$(tmux display-message -p -t "$target" '#{pane_id}' 2>/dev/null) || return 1
-      [ -n "$resolved" ]
-      return
+      [ "$target" = "$resolved" ]
+      ;;
+    @*)
+      resolved=$(tmux display-message -p -t "$target" '#{window_id}' 2>/dev/null) || return 1
+      [ "$target" = "$resolved" ]
+      ;;
+    *)
+      resolved=$(tmux display-message -p -t "$target" '#{session_name}' 2>/dev/null) || return 1
+      [ "${target#=}" = "$resolved" ]
       ;;
   esac
-  # An exact recorded-window hit wins first, matching tmux's own precedence.
-  fm_backend_tmux_target_present "$target" && return 0
-  session=${target%%:*}
-  window=${target#*:}
-  window=${window#=}
-  case "$window" in
-    *.*) ;;
-    *) return 1 ;;
-  esac
-  winpart=${window%.*}
-  pane=${window##*.}
-  [ -n "$winpart" ] && [ -n "$pane" ] || return 1
-  case "$pane" in
-    '%'[0-9]*) ;;
-    *[!0-9]*) return 1 ;;
-    *) ;;
-  esac
-  session="=${session#=}"
-  # The window the pane qualifier belongs to must be a live window of the exact
-  # session, or tmux would answer this target from the session's active window.
-  fm_backend_tmux_target_present "$session:$winpart" || return 1
-  wid=$(tmux display-message -p -t "$session:$winpart" '#{window_id}' 2>/dev/null) || return 1
-  [ -n "$wid" ] || return 1
-  # tmux resolves an out-of-range pane index or id to this window's active pane
-  # and still exits 0, so the requested pane is proved from the window's own
-  # inventory rather than from the full target's answer.
-  case "$pane" in
-    '%'*) panes=$(LC_ALL=C tmux list-panes -t "$wid" -F '#{pane_id}' 2>/dev/null) || return 1 ;;
-    *) panes=$(LC_ALL=C tmux list-panes -t "$wid" -F '#{pane_index}' 2>/dev/null) || return 1 ;;
-  esac
-  printf '%s\n' "$panes" | grep -Fqx -- "$pane"
 }
 
 # fm_backend_tmux_agent_state: recovery-grade harness-agent state for one

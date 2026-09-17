@@ -1243,126 +1243,9 @@ SH
   pass "fm_backend_target_exists: the tmux arm proves the endpoint from tmux's own answer, never its silent fallback"
 }
 
-# --- fm_backend_explicit_target_exists: operator targets keep the pane path --
-#
-# The recorded-window probe above must treat `<sess>:<window>.<n>` as ONE
-# literal window name, because a dotted task id records exactly that string. An
-# operator, by contrast, may type a genuine pane-qualified target, and tmux
-# resolves one to a real pane. Both must hold at once, so the explicit-target
-# arm accepts a pane qualifier only after proving from the session inventory that
-# the window field before the last dot is live, and that tmux resolves the full
-# target into THAT window - never into whichever window tmux would have silently
-# substituted.
-test_explicit_target_exists_tmux_pane_qualified() {
-  local fb
-  fb="$TMP_ROOT/explicit-target-fakebin"; mkdir -p "$fb"
-  # A fake modelling tmux's real precedence: an exact window name wins, a
-  # trailing "<n>" is then read as a pane qualifier against the prefix window,
-  # and an unknown window name answers from the session's active window.
-  cat > "$fb/tmux" <<'SH'
-#!/usr/bin/env bash
-set -u
-target=""; fmt=""; prev=""
-for a in "$@"; do
-  [ "$prev" = -t ] && target=$a
-  [ "$prev" = -F ] && fmt=$a
-  prev=$a
-done
-case "$target" in =*) target=${target#=} ;; esac
-case "${1:-}" in
-  list-windows)
-    [ "$target" = live-sess ] || exit 1
-    case "$fmt" in
-      *#{window_id}*) printf '@7\n@8\n@9\n'; exit 0 ;;
-      *#{window_index}*) printf '0\n1\n2\n'; exit 0 ;;
-    esac
-    printf 'mywin\nfm-dotted.id\nfm-prefix\n'
-    exit 0 ;;
-  list-panes)
-    case "$target" in
-      @7)
-        case "$fmt" in
-          *#{pane_index}*) printf '0\n'; exit 0 ;;
-        esac
-        printf '%%3\n'; exit 0 ;;
-      @9)
-        case "$fmt" in
-          *#{pane_index}*) printf '0\n'; exit 0 ;;
-        esac
-        printf '%%4\n'; exit 0 ;;
-    esac
-    exit 1 ;;
-  display-message)
-    case "$target" in
-      %3) printf '%%3\n'; exit 0 ;;
-      %999) exit 0 ;;
-      live-sess:mywin) printf '@7\n'; exit 0 ;;
-      live-sess:mywin.0|live-sess:mywin.%3) printf '@7.%%3\n'; exit 0 ;;
-      # An out-of-range pane qualifier resolves to the window's active pane.
-      live-sess:mywin.*) printf '@7.%%3\n'; exit 0 ;;
-      live-sess:fm-prefix|live-sess:fm-dotted.id) printf '@9\n'; exit 0 ;;
-      live-sess:fm-prefix.0) printf '@9.%%4\n'; exit 0 ;;
-      # tmux's silent fallbacks: the absent dotted name answers from the live
-      # prefix window, and an unknown window answers from the active window.
-      live-sess:*) printf '@8.%%4\n'; exit 0 ;;
-    esac
-    exit 1 ;;
-  list-sessions) exit 0 ;;
-esac
-exit 1
-SH
-  chmod +x "$fb/tmux"
-
-  # Anti-vacuity: tmux really does answer for both fallback shapes, so only the
-  # inventory-backed proof can make them absent.
-  PATH="$fb:$PATH" tmux display-message -p -t live-sess:fm-prefix.0 '#{pane_id}' >/dev/null 2>&1 \
-    || fail "fixture drifted: display-message must resolve a dotted name to its live prefix window"
-  PATH="$fb:$PATH" tmux display-message -p -t live-sess:no-such.0 '#{pane_id}' >/dev/null 2>&1 \
-    || fail "fixture drifted: display-message must resolve an unknown window to the active window"
-
-  # A live window, a live dotted window name, and a live pane-qualified target.
-  PATH="$fb:$PATH" fm_backend_explicit_target_exists tmux live-sess:mywin \
-    || fail "a live explicit window target must read as present"
-  PATH="$fb:$PATH" fm_backend_explicit_target_exists tmux live-sess:fm-dotted.id \
-    || fail "an explicit target naming a live dotted window must read as present"
-  PATH="$fb:$PATH" fm_backend_explicit_target_exists tmux live-sess:mywin.0 \
-    || fail "a pane-qualified explicit target whose window is live must read as present"
-  PATH="$fb:$PATH" fm_backend_explicit_target_exists tmux live-sess:mywin.%3 \
-    || fail "a pane-id-qualified explicit target whose window is live must read as present"
-  PATH="$fb:$PATH" fm_backend_explicit_target_exists tmux %3 \
-    || fail "a bare pane id must read as present"
-
-  # A pane index or id the window does not hold must read absent even though
-  # tmux answers the full target from the window's active pane.
-  PATH="$fb:$PATH" tmux display-message -p -t live-sess:mywin.5 '#{pane_id}' >/dev/null 2>&1 \
-    || fail "fixture drifted: display-message must resolve an out-of-range pane index to the window's active pane"
-  PATH="$fb:$PATH" fm_backend_explicit_target_exists tmux live-sess:mywin.5 && \
-    fail "a pane-qualified explicit target naming a pane index the window does not hold must read absent"
-  PATH="$fb:$PATH" fm_backend_explicit_target_exists tmux live-sess:mywin.%999 && \
-    fail "a pane-id-qualified explicit target naming a pane the window does not hold must read absent"
-
-  # Absence survives both of tmux's silent fallbacks.
-  PATH="$fb:$PATH" fm_backend_explicit_target_exists tmux live-sess:no-such.0 && \
-    fail "a pane-qualified explicit target whose window is absent must read absent even though tmux answered from the active window"
-  PATH="$fb:$PATH" fm_backend_explicit_target_exists tmux live-sess:no-such && \
-    fail "an explicit target naming an absent window must read absent"
-  PATH="$fb:$PATH" fm_backend_explicit_target_exists tmux gone-sess:mywin && \
-    fail "a session that answers no inventory must not read as present"
-  PATH="$fb:$PATH" fm_backend_explicit_target_exists tmux %999 && \
-    fail "a missing pane id must not read as present"
-  PATH="$fb:$PATH" fm_backend_explicit_target_exists tmux live-sess:mywin. && \
-    fail "a target with no pane qualifier must not read as present"
-
-  # The recorded-window arm must keep the SAME string absent: that split is the
-  # whole reason the two arms exist, and it is what keeps a vanished dotted
-  # worker window from reading live through its surviving prefix window.
-  PATH="$fb:$PATH" fm_backend_target_exists tmux live-sess:fm-prefix \
-    || fail "the live prefix window itself must read as a live endpoint"
-  PATH="$fb:$PATH" fm_backend_target_exists tmux live-sess:fm-prefix.0 && \
-    fail "the recorded-window arm must not accept a pane-qualified form"
-
-  pass "fm_backend_explicit_target_exists: an operator pane target resolves while the recorded-window arm keeps its literal-name proof"
-}
+# The explicit-target pane proof is exercised against real tmux in
+# tests/fm-backend-tmux-smoke.test.sh, which pins tmux's own resolution
+# precedence instead of a stand-in that can encode it wrongly.
 
 test_backend_name_precedence
 test_backend_detect_precedence
@@ -1382,7 +1265,6 @@ test_meta_get_and_backend_of_meta
 test_resolve_selector_three_forms
 test_backend_of_selector_matches_explicit_target_meta
 test_target_exists_tmux_requires_recorded_window
-test_explicit_target_exists_tmux_pane_qualified
 test_send_tmux_contract
 test_peek_conformance_old_vs_new
 test_spawn_symlinked_project_prefix_avoids_false_refusal
