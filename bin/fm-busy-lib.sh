@@ -1025,10 +1025,18 @@ fm_busy_classify() {  # <backend> <target> <harness> <id> <state-dir> [tail40]
 # fm_busy_classify_live: fm_busy_classify behind the one process-level
 # override - a durable busy record can only describe an endpoint that still
 # exists, so a busy verdict on a positively absent local endpoint is dead,
-# never busy. A remote endpoint is proved on its own host and keeps its record;
-# where absence must be told apart from unreadability the recovery-grade
-# classifier (fm_backend_agent_state's missing/dead) is the authority, never a
-# bare presence-probe failure. Requires fm-backend.sh to be sourced.
+# never busy. A remote endpoint is proved on its own host and keeps its record.
+# The failed probe is then read as far as the backend allows:
+#   - a backend with a recovery-grade classifier answers from it, so `missing`
+#     or `dead` is a positive absence and anything else (`unreadable`,
+#     `ambiguous`, or a contradictory `alive`) leaves the record alone, because
+#     uncertainty must never be converted into a silent loss;
+#   - a backend with NO classifier answers `unverified`, so the shared presence
+#     probe is the only authority left and its positive failure IS absence. That
+#     is the same conclusion bin/fm-crew-state.sh's no-run fallback reaches for
+#     the same endpoint, so the watcher's busy path and the lane state read
+#     cannot disagree about a removed endpoint on such a backend.
+# Requires fm-backend.sh to be sourced.
 fm_busy_classify_live() {  # <backend> <target> <harness> <id> <state-dir> [expected-label] [tail40]
   local backend=$1 target=$2 harness=$3 id=$4 state=$5 label=${6-} tail40=${7-} verdict
   if [ -z "$target" ]; then
@@ -1040,7 +1048,7 @@ fm_busy_classify_live() {  # <backend> <target> <harness> <id> <state-dir> [expe
   case "$target" in remote:*) printf '%s' "$verdict"; return 0 ;; esac
   fm_backend_target_exists "$backend" "$target" "$label" 2>/dev/null && { printf '%s' "$verdict"; return 0; }
   case "$(fm_backend_agent_state "$backend" "$target" 2>/dev/null || true)" in
-    missing|dead) printf 'dead endpoint-gone' ;;
+    missing|dead|unverified) printf 'dead endpoint-gone' ;;
     *) printf '%s' "$verdict" ;;
   esac
 }

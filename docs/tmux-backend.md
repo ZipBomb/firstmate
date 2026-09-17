@@ -46,12 +46,16 @@ Verify setup by spawning a small task and confirming its `fm-<id>` window appear
 
 ### Endpoint presence
 
-The cheap endpoint-presence probe (`fm_backend_tmux_target_present` in `bin/backends/tmux.sh`) proves an endpoint from tmux's own answer.
+The cheap endpoint-presence probe proves an endpoint from tmux's own answer, and it has two arms because a pane-qualified target and a dotted recorded window name are the same string.
 `tmux display-message -t <target>` alone is not a presence proof: tmux resolves an unknown window name to the addressed session's active window and still exits 0, so a vanished worker window used to read as a live endpoint.
-The probe proves a `<session>:<window>` endpoint only from the session's window inventory, read in the field the address names: the exact recorded window name, the window index for `<session>:<digits>`, or the window id for `<session>:@<id>`.
+The recorded-window arm (`fm_backend_tmux_target_present`) is what every lane and fleet liveness read uses.
+It proves a `<session>:<window>` endpoint only from the session's window inventory, read in the field the address names: the exact recorded window name, the window index for `<session>:<digits>`, or the window id for `<session>:@<id>`.
 The session is addressed with tmux's leading `=` exact-match modifier, so a vanished session cannot answer an inventory from a live session whose name starts with it through tmux's unique-prefix or glob resolution.
-A pane-qualified form is not accepted, so a window tmux silently resolved to another one (including its active window or a prefix window when the name ends in `.N`) never reads as present.
+A pane-qualified form is not accepted here, so a window tmux silently resolved to another one - its active window, or a prefix window when a recorded task id's window name ends in `.N` - never reads as present.
 A bare `%N` pane address is proved by the pane id coming back nonempty, because tmux answers a missing pane id with an empty one.
+The explicit-target arm (`fm_backend_tmux_explicit_target_present`, reached through `fm_backend_explicit_target_exists`) serves the targets an operator supplies: `bin/fm-send.sh`'s explicit target and the away-mode daemon's supervisor target.
+It keeps the recorded-window proof for a plain or literal-name target, and additionally accepts `<session>:<window>.<pane>` by proving the window field before the last dot from the session window inventory and then requiring tmux to resolve the full target to a nonempty pane inside that same window.
+That window field is what keeps a target naming an absent window absent instead of letting tmux answer with the session's active window, and the window-id comparison keeps a pane proof from landing in a different window.
 
 ### Agent liveness probe
 

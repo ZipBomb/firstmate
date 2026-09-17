@@ -51,6 +51,8 @@ export PATH
 
 # shellcheck source=/dev/null
 . "$ROOT/bin/fm-backend.sh"
+# shellcheck source=/dev/null
+. "$ROOT/bin/fm-supervisor-target-lib.sh"
 fm_backend_source tmux || fail "fm_backend_source tmux failed"
 
 SESSION="smoke"
@@ -120,14 +122,15 @@ fm_backend_target_exists tmux "$PANE_ID" \
 if fm_backend_target_exists tmux '%999999'; then
   fail "a missing pane id, which real tmux answers with an empty pane_id, must not read as live"
 fi
-# The away-mode supervisor fallback addresses the default window by INDEX
-# ("firstmate:0"), so a window index must be proved present from the session's
-# own inventory, and an index the session does not hold must read absent.
-tmux list-windows -t "$SESSION" -F '#{window_index}' | grep -qx '0' \
-  || fail "fixture drifted: the smoke session must hold window index 0"
-fm_backend_target_exists tmux "$SESSION:0" \
-  || fail "the away-mode supervisor index target '$SESSION:0' must read as a live endpoint"
-if fm_backend_target_exists tmux "$SESSION:999"; then
+# A numeric window-index target must be proved from the session's own
+# inventory, and an index the session does not hold must read absent. The index
+# is derived rather than pinned so this assertion also holds on a host whose tmux
+# config sets a non-default `base-index`.
+FIRST_INDEX=$(tmux list-windows -t "$SESSION" -F '#{window_index}' | head -n1)
+[ -n "$FIRST_INDEX" ] || fail "real tmux: could not read a window index"
+fm_backend_target_exists tmux "$SESSION:$FIRST_INDEX" \
+  || fail "a window index the session holds must read as a live endpoint"
+if fm_backend_target_exists tmux "$SESSION:$((FIRST_INDEX + 900))"; then
   fail "a window index the session does not hold must not read as a live endpoint"
 fi
 FIRST_ID=$(tmux list-windows -t "$SESSION" -F '#{window_id}' | head -n1)
@@ -148,6 +151,30 @@ tmux display-message -p -t "$SESSION:fm-prefix.0" '#{pane_id}' >/dev/null 2>&1 \
 if fm_backend_target_exists tmux "$SESSION:fm-prefix.0"; then
   fail "an absent dotted window whose live prefix window tmux resolved must not read as a live endpoint"
 fi
+# The explicit-target arm: an operator-typed pane-qualified target must read
+# present while the window it names is live, and must still read absent when it
+# is not, so tmux's silent fallback to the session's active window can never make
+# an absent window present. The recorded-window arm must keep reading the same
+# string as one literal window name, which is what keeps a vanished dotted
+# worker window absent.
+PANE_INDEX=$(tmux display-message -p -t "$SESSION:fm-prefix" '#{pane_index}')
+[ -n "$PANE_INDEX" ] || fail "real tmux: could not read a pane index"
+if ! tmux display-message -p -t "$SESSION:fm-prefix.$PANE_INDEX" '#{pane_id}' >/dev/null 2>&1; then
+  fail "fixture drifted: real tmux must resolve a pane-qualified target"
+fi
+fm_backend_explicit_target_exists tmux "$SESSION:fm-prefix.$PANE_INDEX" \
+  || fail "a pane-qualified explicit target whose window is live must read as present"
+if ! tmux display-message -p -t "$SESSION:no-such-window-xyz.$PANE_INDEX" '#{pane_id}' >/dev/null 2>&1; then
+  fail "fixture drifted: real tmux must resolve an absent window name to the active window"
+fi
+if fm_backend_explicit_target_exists tmux "$SESSION:no-such-window-xyz.$PANE_INDEX"; then
+  fail "a pane-qualified explicit target whose window is absent must read absent even though tmux resolved it to the active window"
+fi
+if fm_backend_target_exists tmux "$SESSION:fm-prefix.$PANE_INDEX"; then
+  fail "the recorded-window arm must keep reading a pane-qualified string as one literal window name"
+fi
+fm_backend_explicit_target_exists tmux "$PANE_ID" \
+  || fail "the explicit-target arm must keep reading a bare pane id as present"
 # tmux also resolves a target-session by exact name, then by unique prefix, then
 # by glob, so a session that does not exist can still answer an inventory from a
 # live prefix sibling and make a vanished endpoint read present. The presence
@@ -261,6 +288,30 @@ state=$(fm_backend_agent_state tmux "$TARGET")
 # Best-effort contract: killing an already-gone window must not error.
 fm_backend_tmux_kill "$TARGET" || fail "fm_backend_tmux_kill on an already-dead target must stay best-effort (never fail)"
 pass "real tmux: kill removes the window and the readable session inventory authoritatively classifies it missing"
+
+# --- supervisor fallback under a non-default base-index ----------------------
+#
+# The away-mode supervisor fallback names the "firstmate" SESSION rather than a
+# fixed window index, so it must resolve the session's active window whatever the
+# operator's `base-index` is - a configuration this repo's own create path
+# supports. Model exactly that on the private server: a session whose first (and
+# only) window carries index 1.
+fallback=$(FM_SUPERVISOR_TARGET='' TMUX_PANE='' HERDR_ENV='' HERDR_PANE_ID='' \
+  discover_supervisor_target 2>/dev/null) || true
+[ "$fallback" = "$FM_SUPERVISOR_TARGET_DEFAULT" ] \
+  || fail "fixture drifted: the bare supervisor fallback is '$fallback'"
+tmux set-option -g base-index 1
+tmux new-session -d -s "$FM_SUPERVISOR_TARGET_DEFAULT" -x 80 -y 24 \
+  || fail "real tmux: could not create the fallback session"
+SUPERVISOR_INDEX=$(tmux list-windows -t "$FM_SUPERVISOR_TARGET_DEFAULT" -F '#{window_index}' | head -n1)
+[ "$SUPERVISOR_INDEX" != "0" ] \
+  || fail "fixture drifted: base-index 1 must give the fallback session a window index other than 0"
+if fm_backend_explicit_target_exists tmux "$FM_SUPERVISOR_TARGET_DEFAULT:0"; then
+  fail "a fixed index-0 supervisor target must read absent when the session's windows start above 0"
+fi
+fm_backend_explicit_target_exists tmux "$FM_SUPERVISOR_TARGET_DEFAULT" \
+  || fail "the supervisor fallback must resolve the session's active window under a non-default base-index"
+pass "real tmux: the supervisor fallback resolves the session's active window under a non-default base-index"
 
 cleanup_all
 trap - EXIT

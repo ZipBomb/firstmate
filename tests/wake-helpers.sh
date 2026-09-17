@@ -251,7 +251,7 @@ case "${1:-}" in
     # value carries its "<session>:<window>" target. The shared renderer turns
     # that window set into the requested -F field exactly as tmux would.
     FM_FAKE_TMUX_INVENTORY_WINDOWS="${FM_FAKE_TMUX_WINDOW:-}
-${FM_SUPERVISOR_TARGET:-firstmate:0}"
+${FM_SUPERVISOR_TARGET:-firstmate}"
     export FM_FAKE_TMUX_INVENTORY_WINDOWS
     exec "$(cd "$(dirname "$0")/../.." && pwd -P)/fake-tmux-inventory.sh" "$@"
     ;;
@@ -349,7 +349,7 @@ case "${1:-}" in
     # field. This fixture's world holds the supervisor pane plus the "sess:win"
     # pane its fm-send cases address explicitly.
     FM_FAKE_TMUX_INVENTORY_WINDOWS="${FM_FAKE_TMUX_WINDOW:-sess:win}
-${FM_SUPERVISOR_TARGET:-firstmate:0}"
+${FM_SUPERVISOR_TARGET:-firstmate}"
     export FM_FAKE_TMUX_INVENTORY_WINDOWS
     exec "$(cd "$(dirname "$0")/../.." && pwd -P)/fake-tmux-inventory.sh" "$@"
     ;;

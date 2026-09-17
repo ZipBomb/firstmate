@@ -356,6 +356,76 @@ fm_backend_tmux_target_present() {  # <target>
   printf '%s\n' "$inventory" | grep -Fqx -- "$window"
 }
 
+# fm_backend_tmux_explicit_target_present: the explicit-target sibling of
+# fm_backend_tmux_target_present, for a target the OPERATOR typed rather than a
+# window name firstmate recorded. The two must not share one rule, because a
+# pane-qualified target and a dotted recorded window name are the same string:
+# `<sess>:fm-held.0` names the recorded worker window `fm-held.0`, and
+# `<sess>:mywin.0` asks tmux for pane 0 of window `mywin`. tmux resolves the
+# first by exact window name and falls back to the second, so a single rule
+# either hides a vanished dotted worker window (the fleet-loss incident this
+# probe exists to fix) or rejects every legitimate pane-qualified operator
+# target. The strict rule therefore stays on the recorded-window path
+# (fm_backend_tmux_target_present), and only callers that are given a target by
+# an operator - bin/fm-send.sh's explicit target and the away-mode daemon's
+# supervisor target - use this one.
+# Shapes, all proved through tmux's own answer and never by the addressed call
+# alone:
+#   - a bare address (session name, or the daemon's "%N" pane id) keeps the
+#     shared rule: a nonempty resolved pane id;
+#   - a target whose window field is a live window of the exact session is
+#     present, which includes a window whose literal name contains dots, since
+#     tmux resolves an exact window name before any pane qualifier;
+#   - a `<sess>:<window>.<pane>` target is present only when the window field
+#     before the last dot is itself a live window of the exact session AND tmux
+#     resolves the full target to a nonempty pane inside that same window. That
+#     second field check is what makes a target naming an absent window absent
+#     (`<sess>:no-such.0`) instead of letting tmux answer with the session's
+#     active window, and the window-id comparison is what keeps the pane proof
+#     from resolving to a different window.
+# Read-only and cheap: it never starts a server or session. Any read failure is
+# absence, because this is a presence probe.
+fm_backend_tmux_explicit_target_present() {  # <target>
+  local target=$1 session window winpart pane wid resolved rwid rpid
+  case "$target" in
+    # A two-colon or empty-part target names no single window.
+    *:*:*|'':*|*:'') return 1 ;;
+    *:*) ;;
+    *)
+      resolved=$(tmux display-message -p -t "$target" '#{pane_id}' 2>/dev/null) || return 1
+      [ -n "$resolved" ]
+      return
+      ;;
+  esac
+  # An exact recorded-window hit wins first, matching tmux's own precedence.
+  fm_backend_tmux_target_present "$target" && return 0
+  session=${target%%:*}
+  window=${target#*:}
+  window=${window#=}
+  case "$window" in
+    *.*) ;;
+    *) return 1 ;;
+  esac
+  winpart=${window%.*}
+  pane=${window##*.}
+  [ -n "$winpart" ] && [ -n "$pane" ] || return 1
+  case "$pane" in
+    '%'[0-9]*) ;;
+    *[!0-9]*) return 1 ;;
+    *) ;;
+  esac
+  session="=${session#=}"
+  # The window the pane qualifier belongs to must be a live window of the exact
+  # session, or tmux would answer this target from the session's active window.
+  fm_backend_tmux_target_present "$session:$winpart" || return 1
+  wid=$(tmux display-message -p -t "$session:$winpart" '#{window_id}' 2>/dev/null) || return 1
+  [ -n "$wid" ] || return 1
+  resolved=$(tmux display-message -p -t "$session:$window" '#{window_id}.#{pane_id}' 2>/dev/null) || return 1
+  rwid=${resolved%%.*}
+  rpid=${resolved#*.}
+  [ "$rwid" = "$wid" ] && [ -n "$rpid" ]
+}
+
 # fm_backend_tmux_agent_state: recovery-grade harness-agent state for one
 # recorded target. See bin/fm-backend.sh's fm_backend_agent_state for the
 # shared state vocabulary and docs/tmux-backend.md "Agent liveness probe" for

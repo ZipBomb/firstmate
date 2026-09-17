@@ -2669,9 +2669,9 @@ test_discover_supervisor_target_herdr() {
   if out=$(FM_SUPERVISOR_TARGET='' TMUX_PANE='' HERDR_ENV='' HERDR_PANE_ID='' discover_supervisor_target); then
     fail "bare fallback should return non-zero"
   fi
-  [ "$out" = "firstmate:0" ] || fail "bare fallback should still print firstmate:0: $out"
+  [ "$out" = "firstmate" ] || fail "bare fallback should still print the firstmate session: $out"
 
-  pass "discover_supervisor_target: override > TMUX_PANE > herdr '<session>:<pane-id>' composition > firstmate:0 fallback"
+  pass "discover_supervisor_target: override > TMUX_PANE > herdr '<session>:<pane-id>' composition > firstmate session fallback"
 }
 
 test_pane_is_busy_herdr_native_busy_state() {
@@ -2734,7 +2734,7 @@ test_inject_msg_herdr_busy_guard_defers() {
   state="$dir/state"
   afk_enter "$state"
   (
-    fm_backend_target_exists() { [ "$1" = herdr ] && [ "$2" = "default:w1:p2" ] || fail "unexpected target_exists args: $1 $2"; return 0; }
+    fm_backend_explicit_target_exists() { [ "$1" = herdr ] && [ "$2" = "default:w1:p2" ] || fail "unexpected explicit target_exists args: $1 $2"; return 0; }
     pane_is_busy() { return 0; }
     fm_backend_composer_state() { fail "composer_state should not be consulted once the busy-guard already deferred"; }
     fm_backend_send_text_submit() { fail "send_text_submit should not run when the busy-guard defers"; }
@@ -2751,7 +2751,7 @@ test_inject_msg_herdr_composer_guard_defers() {
   state="$dir/state"
   afk_enter "$state"
   (
-    fm_backend_target_exists() { return 0; }
+    fm_backend_explicit_target_exists() { return 0; }
     pane_is_busy() { return 1; }
     fm_backend_composer_state() { [ "$1" = herdr ] && [ "$2" = "default:w1:p2" ] || fail "unexpected composer_state args: $1 $2"; printf 'pending'; }
     fm_backend_send_text_submit() { fail "send_text_submit should not run when the composer-guard defers"; }
@@ -2768,7 +2768,7 @@ test_inject_msg_herdr_pane_gone_defers() {
   state="$dir/state"
   afk_enter "$state"
   (
-    fm_backend_target_exists() { return 1; }
+    fm_backend_explicit_target_exists() { return 1; }
     pane_is_busy() { fail "busy guard should not be consulted once the pane-exists check already failed"; }
     fm_backend_send_text_submit() { fail "send_text_submit should not run when the pane does not exist"; }
     if FM_SUPERVISOR_BACKEND=herdr FM_SUPERVISOR_TARGET="default:w1:gone" inject_msg "hello" "$state"; then
@@ -2784,7 +2784,7 @@ test_inject_msg_herdr_submits_through_backend_dispatch() {
   state="$dir/state"
   afk_enter "$state"
   (
-    fm_backend_target_exists() { return 0; }
+    fm_backend_explicit_target_exists() { return 0; }
     pane_is_busy() { return 1; }
     fm_backend_composer_state() { printf 'empty'; }
     fm_backend_send_text_submit() {
@@ -2809,7 +2809,7 @@ test_inject_msg_defers_on_dead_shell_unknown() {
   state="$dir/state"
   afk_enter "$state"
   (
-    fm_backend_target_exists() { return 0; }
+    fm_backend_explicit_target_exists() { return 0; }
     pane_is_busy() { return 1; }
     fm_backend_composer_state() { printf 'unknown'; }
     fm_backend_send_text_submit() { fail "send_text_submit must NOT run when the composer is a dead shell (unknown)"; }
@@ -2826,7 +2826,7 @@ test_inject_msg_defers_on_unrecognized_composer_state() {
   state="$dir/state"
   afk_enter "$state"
   (
-    fm_backend_target_exists() { return 0; }
+    fm_backend_explicit_target_exists() { return 0; }
     pane_is_busy() { return 1; }
     fm_backend_composer_state() { printf 'future-state'; }
     fm_backend_send_text_submit() { fail "send_text_submit must not run for an unrecognized composer state"; }

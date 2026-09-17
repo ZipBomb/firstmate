@@ -909,6 +909,32 @@ fm_backend_target_exists() {  # <backend> <target> [expected-label]
   esac
 }
 
+# fm_backend_explicit_target_exists: the presence probe for a target an
+# OPERATOR supplied - bin/fm-send.sh's explicit target and the away-mode
+# daemon's supervisor target - as opposed to a window name firstmate recorded
+# for a task. The two must differ, because on tmux a pane-qualified target and a
+# dotted recorded window name are the same string: `<sess>:fm-held.0` is the
+# recorded worker window `fm-held.0`, while `<sess>:mywin.0` is pane 0 of window
+# `mywin`. Only the recorded path may treat that string as one literal window
+# name, or a vanished dotted worker window would read as a live prefix window
+# again, which is exactly the fleet-loss incident this probe exists to fix.
+# For tmux the explicit arm proves a pane-qualified target through tmux's own
+# resolution and then confirms the window it lands in (see
+# fm_backend_tmux_explicit_target_present in bin/backends/tmux.sh); every other
+# backend keeps its recorded-target probe, whose adapter already addresses the
+# operator-supplied shape directly (a herdr target is a pane id, not a window).
+fm_backend_explicit_target_exists() {  # <backend> <target> [expected-label]
+  case "$1" in
+    tmux)
+      fm_backend_source tmux || return 1
+      fm_backend_tmux_explicit_target_present "$2"
+      ;;
+    *)
+      fm_backend_target_exists "$@"
+      ;;
+  esac
+}
+
 # fm_backend_agent_state: the single recovery-grade agent/endpoint state
 # contract. It is deliberately richer than fm_backend_target_exists's cheap
 # pane-presence read and prints exactly one of:
