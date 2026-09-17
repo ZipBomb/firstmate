@@ -164,7 +164,9 @@ can't find session: ses   list-windows -t =ses refused the prefix-only session, 
 ```
 
 Each of the first, second, and fourth calls reported the active window's own pane instead of failing, and the last three show that only the `=` exact-match form addresses the session that really exists.
-`tests/fm-backend-tmux-smoke.test.sh` asserts that fallback is still present in the installed tmux and that `fm_backend_target_exists` reads a vanished window name (and an absent index or `@id`) absent, a target whose session exists only as a unique prefix of a live session absent, and the live window, the live index/`@id`, the exact session, and a bare pane id present; run it to refresh this evidence.
+`tests/fm-backend-tmux-smoke.test.sh` asserts that fallback is still present in the installed tmux and that `fm_backend_target_exists` reads a vanished window name (and an absent index or `@id`) absent, a target whose session exists only as a unique prefix of a live session absent, and the live window, the live index/`@id`, the exact session, and a bare pane id present.
+It also pins the explicit-target arm (`fm_backend_explicit_target_exists`) to tmux's own resolution: a pane-qualified target whose window is live reads present, while a nonexistent pane index or id, a pane-qualified target whose window is absent, and a dotted name tmux cannot route as a pane target all read absent, and a window literally named with a dot reads present only when tmux routes the whole name.
+Run it to refresh this evidence.
 
 ### Agent liveness name sources
 
