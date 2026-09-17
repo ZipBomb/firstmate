@@ -1,0 +1,21 @@
+== scenario A: away grant + live plan-gated 403 ==
+exit=2
+--- product stderr ---
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair a missing or failed watcher cycle with the Pi tool fm_watch_arm_pi, or restart Pi with -e /home/zipbomb/.no-mistakes/worktrees/9000821919f5/01M2Q2E8THEYYXH83XWYXMKNTF/.pi/extensions/fm-primary-turnend-guard.ts -e /home/zipbomb/.no-mistakes/worktrees/9000821919f5/01M2Q2E8THEYYXH83XWYXMKNTF/.pi/extensions/fm-primary-pi-watch.ts if the extensions are not loaded.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+verified: https://github.com/ZipBomb/vibra/pull/1001 is open and mergeable, with every required check green at head abcdabcdabcdabcdabcdabcdabcdabcdabcdabcd
+error: GitHub merge refused while away because the base branch's merge-queue state does not prove an immediate merge; nothing was handed to the forge
+--- live gh rules stdout ---
+{"message":"Upgrade to GitHub Pro or make this repository public to enable this feature.","documentation_url":"https://docs.github.com/rest/repos/rules#get-rules-for-a-branch","status":"403"}--- live gh rules stderr ---
+gh: Upgrade to GitHub Pro or make this repository public to enable this feature. (HTTP 403)
+--- forge log ---
+pr view https://github.com/ZipBomb/vibra/pull/1001 --json headRefOid -q .headRefOid
+pr view https://github.com/ZipBomb/vibra/pull/1001 --json state,isDraft,mergeable,mergeStateStatus,headRefOid,baseRefName,statusCheckRollup
+api --paginate repos/ZipBomb/vibra/rules/branches/main --jq .[] | select(.type == "merge_queue") | "merge_method=" + (.parameters.merge_method // "")
+--- wake queue ---
+not ok - scenario A: away grant merge blocked by a live plan-403
