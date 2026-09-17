@@ -235,12 +235,31 @@ case "${1:-}" in
   display-message)
     [ "${FM_FAKE_TMUX_PANE_ALIVE:-1}" = "1" ] || exit 1
     _print=0
+    _target=""; _fmt=""; _prev=""
     # Return cursor_y when the format asks for it (pane_input_pending).
     for _a in "$@"; do
       case "$_a" in *cursor_y*) printf '%s\n' "${FM_FAKE_TMUX_CURSOR_Y:-0}"; exit 0 ;; esac
       [ "$_a" = "-p" ] && _print=1
+      [ "$_prev" = "-t" ] && _target=$_a
+      case "$_a" in *'#{'*) _fmt=$_a ;; esac
+      _prev=$_a
     done
+    # The explicit-target probe proves tmux's own resolved identity, so a
+    # "<session>:<window>" target answers its own session and window fields.
+    case "$_fmt" in
+      *session_name*) _s=${_target%%:*}; printf '%s\n' "${_s#=}"; exit 0 ;;
+      *window_name*) _w=${_target#*:}; _w=${_w#=}; printf '%s\n' "${_w%%.*}"; exit 0 ;;
+      *window_index*) printf '0\n'; exit 0 ;;
+      *window_id*) printf '@0\n'; exit 0 ;;
+      *pane_id*) printf '%%0\n'; exit 0 ;;
+      *pane_index*) printf '0\n'; exit 0 ;;
+    esac
     [ "$_print" = 1 ] && printf 'fakepane\n'
+    exit 0 ;;
+  list-panes)
+    # The explicit-target probe's deliverability check; real tmux answers for a
+    # target it can route.
+    case " $* " in *'#{pane_id}'*) printf '%%0\n' ;; esac
     exit 0 ;;
   list-windows)
     # Real tmux's session inventory, which is the only presence proof: an
@@ -337,9 +356,30 @@ write_composer() {
 case "${1:-}" in
   display-message)
     print=0
-    for a in "$@"; do case "$a" in *cursor_y*) printf '1\n'; exit 0 ;; esac; done
-    for a in "$@"; do [ "$a" = "-p" ] && print=1; done
+    target=""; fmt=""; prev=""
+    for a in "$@"; do
+      case "$a" in *cursor_y*) printf '1\n'; exit 0 ;; esac
+      [ "$a" = "-p" ] && print=1
+      [ "$prev" = "-t" ] && target=$a
+      case "$a" in *'#{'*) fmt=$a ;; esac
+      prev=$a
+    done
+    # The explicit-target probe proves tmux's own resolved identity, so a
+    # "<session>:<window>" target answers its own session and window fields.
+    case "$fmt" in
+      *session_name*) s=${target%%:*}; printf '%s\n' "${s#=}"; exit 0 ;;
+      *window_name*) w=${target#*:}; w=${w#=}; printf '%s\n' "${w%%.*}"; exit 0 ;;
+      *window_index*) printf '0\n'; exit 0 ;;
+      *window_id*) printf '@0\n'; exit 0 ;;
+      *pane_id*) printf '%%0\n'; exit 0 ;;
+      *pane_index*) printf '0\n'; exit 0 ;;
+    esac
     [ "$print" = 1 ] && printf 'fakepane\n'
+    exit 0 ;;
+  list-panes)
+    # The explicit-target probe's deliverability check; real tmux answers for a
+    # target it can route.
+    case " $* " in *'#{pane_id}'*) printf '%%0\n' ;; esac
     exit 0 ;;
   capture-pane) cat "$COMPOSER" 2>/dev/null; exit 0 ;;
   list-windows)

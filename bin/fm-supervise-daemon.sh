@@ -1648,10 +1648,11 @@ fm_super_main() {
   # probe, so a herdr supervisor pane is checked via the herdr adapter. The
   # tmux arm is the EXPLICIT-target probe: an operator-supplied tmux target may
   # be pane-qualified (`<session>:<window>.<pane>`) or a bare pane id, so it
-  # proves the pane and its window from tmux's own inventory, instead of
-  # trusting `display-message` alone, which silently resolves a missing window
-  # to the session's active window and an out-of-range pane to the window's
-  # active pane.
+  # requires the identity tmux itself resolves - session, window name/index/@id,
+  # and, when the target names one, pane id/index - to match the request,
+  # instead of trusting `display-message` alone, which silently resolves a
+  # missing window to the session's active window and an out-of-range pane to
+  # the window's active pane.
   if ! fm_backend_explicit_target_exists "$BACKEND" "$TARGET"; then
     echo "error: supervisor target '$TARGET' does not resolve to a $BACKEND pane; set FM_SUPERVISOR_TARGET" >&2
     log "startup failed: target '$TARGET' not found (backend=$BACKEND)"
