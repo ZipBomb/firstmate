@@ -654,8 +654,23 @@ set -u
 case "${1:-}" in
   send-keys) exit 0 ;;
   display-message)
-    for a in "$@"; do case "$a" in *cursor_y*) printf '1\n'; exit 0 ;; esac; done
-    printf 'fakepane\n'; exit 0 ;;
+    target=""; fmt=""; prev=""
+    for a in "$@"; do
+      [ "$prev" = -t ] && target=$a
+      case "$a" in *'#{'*) fmt=$a ;; esac
+      prev=$a
+    done
+    case "$fmt" in
+      *cursor_y*) printf '1\n' ;;
+      *session_name*) s=${target%%:*}; printf '%s\n' "${s#=}" ;;
+      *window_name*) w=${target#*:}; w=${w#=}; printf '%s\n' "${w%%.*}" ;;
+      *window_index*) printf '0\n' ;;
+      *window_id*) printf '@0\n' ;;
+      *pane_id*) printf '%%0\n' ;;
+      *pane_index*) printf '0\n' ;;
+      *) printf 'fakepane\n' ;;
+    esac
+    exit 0 ;;
   capture-pane)
     start= end=
     while [ $# -gt 0 ]; do
@@ -709,10 +724,13 @@ test_send_tmux_contract() {
   run_send_case "$ROOT" "$fb" "$log" "$home" -- "sess:win" --key Escape
   rc=$?
   expect_code 0 "$rc" "fm-send --key should succeed against a live fake pane"
-  # The exact-match "=" session modifier is part of the proof, not decoration:
-  # without it tmux would resolve a vanished session by unique prefix or glob.
-  assert_contains "$(cat "$log")" $'\x1f''list-windows'$'\x1f''-t'$'\x1f''=sess'$'\x1f''-F'$'\x1f''#{window_name}' \
-    "fm-send --key did not prove the explicit tmux target's recorded window before sending"
+  # The explicit target is resolved through tmux before anything is typed:
+  # list-panes is the hard deliverability proof and the resolved session is read
+  # back so a unique-prefix session cannot stand in.
+  assert_contains "$(cat "$log")" $'\x1f''list-panes'$'\x1f''-t'$'\x1f''sess:win'$'\x1f''-F'$'\x1f''#{pane_id}' \
+    "fm-send --key did not resolve the explicit tmux target before sending"
+  assert_contains "$(cat "$log")" $'\x1f''display-message'$'\x1f''-p'$'\x1f''-t'$'\x1f''sess:win'$'\x1f''#{session_name}' \
+    "fm-send --key did not compare the resolved session before sending"
   assert_contains "$(cat "$log")" $'\x1f''Escape' "fm-send --key did not send the named key"
   assert_not_contains "$(cat "$log")" $'\x1f''-l'$'\x1f' "fm-send --key must not type literal text"
 

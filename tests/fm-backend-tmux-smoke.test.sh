@@ -170,19 +170,32 @@ fm_backend_explicit_target_exists tmux "$SESSION:fm-prefix.$PREFIX_PANE_ID" \
   || fail "a pane-id-qualified explicit target whose pane is live must read as present"
 fm_backend_explicit_target_exists tmux "$SESSION:fm-prefix" \
   || fail "a plain explicit window target must read as present"
-# A window whose literal name contains a dot is not addressable as a pane
-# target: tmux splits at the dot and cannot route the name, so the explicit arm
-# reads it absent even though the recorded-window arm keeps it present.
+# A dotted window name is addressable as a pane target only when tmux can form
+# the pane qualifier from it: with a non-pane suffix such as `fm-dotted.id` the
+# target is unrouteable, so the explicit arm reads it absent while the
+# recorded-window arm still reads the live window present.
 tmux new-window -d -t "$SESSION:" -n 'fm-dotted.id' \
   || fail "real tmux: could not create the fm-dotted.id window"
 if tmux list-panes -t "$SESSION:fm-dotted.id" -F '#{pane_id}' >/dev/null 2>&1; then
-  fail "fixture drifted: real tmux must not route a dotted window name as a pane target"
+  fail "fixture drifted: real tmux must not route a dotted name whose suffix is not a pane qualifier"
 fi
 fm_backend_target_exists tmux "$SESSION:fm-dotted.id" \
   || fail "the recorded-window arm must read a live dotted window name as present"
 if fm_backend_explicit_target_exists tmux "$SESSION:fm-dotted.id"; then
-  fail "a dotted window name tmux cannot route as a pane target must read absent"
+  fail "a dotted name tmux cannot route as a pane target must read absent"
 fi
+# With a numeric suffix and no prefix window, tmux keeps the whole dotted name
+# as the window and the target is deliverable, so the explicit arm must read the
+# live window present and agree with the recorded-window arm.
+tmux new-window -d -t "$SESSION:" -n 'fm-held.0' \
+  || fail "real tmux: could not create the fm-held.0 window"
+if ! tmux list-panes -t "$SESSION:fm-held.0" -F '#{pane_id}' >/dev/null 2>&1; then
+  fail "fixture drifted: real tmux must route a dotted name whose suffix is a pane qualifier"
+fi
+fm_backend_target_exists tmux "$SESSION:fm-held.0" \
+  || fail "the recorded-window arm must read a live dotted window name as present"
+fm_backend_explicit_target_exists tmux "$SESSION:fm-held.0" \
+  || fail "a deliverable dotted window name must read present through the explicit arm"
 # tmux resolves an out-of-range pane index or id to the window's active pane and
 # still exits 0, so a pane the window does not hold must be proved from the
 # window's pane inventory and read absent.
