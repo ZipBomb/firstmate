@@ -54,8 +54,8 @@ The session is addressed with tmux's leading `=` exact-match modifier, so a vani
 A pane-qualified form is not accepted here, so a window tmux silently resolved to another one - its active window, or a prefix window when a recorded task id's window name ends in `.N` - never reads as present.
 A bare `%N` pane address is proved by the pane id coming back nonempty, because tmux answers a missing pane id with an empty one.
 The explicit-target arm (`fm_backend_tmux_explicit_target_present`, reached through `fm_backend_explicit_target_exists`) serves the targets an operator supplies: `bin/fm-send.sh`'s explicit target and the away-mode daemon's supervisor target.
-It keeps the recorded-window proof for a plain or literal-name target, and additionally accepts `<session>:<window>.<pane>` by proving the window field before the last dot from the session window inventory and then requiring tmux to resolve the full target to a nonempty pane inside that same window.
-That window field is what keeps a target naming an absent window absent instead of letting tmux answer with the session's active window, and the window-id comparison keeps a pane proof from landing in a different window.
+It keeps the recorded-window proof for a plain or literal-name target, and additionally accepts `<session>:<window>.<pane>` by proving the window field before the last dot from the session window inventory and then requiring the requested pane index or id to appear in that window's own pane inventory.
+That window field is what keeps a target naming an absent window absent instead of letting tmux answer with the session's active window, and the pane inventory keeps a nonexistent pane absent because tmux resolves an out-of-range pane index or id to the window's active pane and still exits 0.
 
 ### Agent liveness probe
 

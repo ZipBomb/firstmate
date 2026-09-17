@@ -164,6 +164,19 @@ if ! tmux display-message -p -t "$SESSION:fm-prefix.$PANE_INDEX" '#{pane_id}' >/
 fi
 fm_backend_explicit_target_exists tmux "$SESSION:fm-prefix.$PANE_INDEX" \
   || fail "a pane-qualified explicit target whose window is live must read as present"
+# tmux resolves an out-of-range pane index or id to the window's active pane and
+# still exits 0, so a pane the window does not hold must be proved from the
+# window's pane inventory and read absent.
+OUT_OF_RANGE_PANE_INDEX=$((PANE_INDEX + 900))
+if ! tmux display-message -p -t "$SESSION:fm-prefix.$OUT_OF_RANGE_PANE_INDEX" '#{pane_id}' >/dev/null 2>&1; then
+  fail "fixture drifted: real tmux must resolve an out-of-range pane index to the window's active pane"
+fi
+if fm_backend_explicit_target_exists tmux "$SESSION:fm-prefix.$OUT_OF_RANGE_PANE_INDEX"; then
+  fail "a pane-qualified explicit target naming a pane index the window does not hold must read absent"
+fi
+if fm_backend_explicit_target_exists tmux "$SESSION:fm-prefix.%999999"; then
+  fail "a pane-qualified explicit target naming a pane id the window does not hold must read absent"
+fi
 if ! tmux display-message -p -t "$SESSION:no-such-window-xyz.$PANE_INDEX" '#{pane_id}' >/dev/null 2>&1; then
   fail "fixture drifted: real tmux must resolve an absent window name to the active window"
 fi

@@ -1278,12 +1278,28 @@ case "${1:-}" in
     esac
     printf 'mywin\nfm-dotted.id\nfm-prefix\n'
     exit 0 ;;
+  list-panes)
+    case "$target" in
+      @7)
+        case "$fmt" in
+          *#{pane_index}*) printf '0\n'; exit 0 ;;
+        esac
+        printf '%%3\n'; exit 0 ;;
+      @9)
+        case "$fmt" in
+          *#{pane_index}*) printf '0\n'; exit 0 ;;
+        esac
+        printf '%%4\n'; exit 0 ;;
+    esac
+    exit 1 ;;
   display-message)
     case "$target" in
       %3) printf '%%3\n'; exit 0 ;;
       %999) exit 0 ;;
       live-sess:mywin) printf '@7\n'; exit 0 ;;
       live-sess:mywin.0|live-sess:mywin.%3) printf '@7.%%3\n'; exit 0 ;;
+      # An out-of-range pane qualifier resolves to the window's active pane.
+      live-sess:mywin.*) printf '@7.%%3\n'; exit 0 ;;
       live-sess:fm-prefix|live-sess:fm-dotted.id) printf '@9\n'; exit 0 ;;
       live-sess:fm-prefix.0) printf '@9.%%4\n'; exit 0 ;;
       # tmux's silent fallbacks: the absent dotted name answers from the live
@@ -1315,6 +1331,15 @@ SH
     || fail "a pane-id-qualified explicit target whose window is live must read as present"
   PATH="$fb:$PATH" fm_backend_explicit_target_exists tmux %3 \
     || fail "a bare pane id must read as present"
+
+  # A pane index or id the window does not hold must read absent even though
+  # tmux answers the full target from the window's active pane.
+  PATH="$fb:$PATH" tmux display-message -p -t live-sess:mywin.5 '#{pane_id}' >/dev/null 2>&1 \
+    || fail "fixture drifted: display-message must resolve an out-of-range pane index to the window's active pane"
+  PATH="$fb:$PATH" fm_backend_explicit_target_exists tmux live-sess:mywin.5 && \
+    fail "a pane-qualified explicit target naming a pane index the window does not hold must read absent"
+  PATH="$fb:$PATH" fm_backend_explicit_target_exists tmux live-sess:mywin.%999 && \
+    fail "a pane-id-qualified explicit target naming a pane the window does not hold must read absent"
 
   # Absence survives both of tmux's silent fallbacks.
   PATH="$fb:$PATH" fm_backend_explicit_target_exists tmux live-sess:no-such.0 && \

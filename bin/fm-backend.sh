@@ -919,7 +919,8 @@ fm_backend_target_exists() {  # <backend> <target> [expected-label]
 # name, or a vanished dotted worker window would read as a live prefix window
 # again, which is exactly the fleet-loss incident this probe exists to fix.
 # For tmux the explicit arm proves a pane-qualified target through tmux's own
-# resolution and then confirms the window it lands in (see
+# resolution and then confirms the pane and its window from the target window's
+# own inventory (see
 # fm_backend_tmux_explicit_target_present in bin/backends/tmux.sh); every other
 # backend keeps its recorded-target probe, whose adapter already addresses the
 # operator-supplied shape directly (a herdr target is a pane id, not a window).

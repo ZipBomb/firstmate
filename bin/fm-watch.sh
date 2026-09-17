@@ -338,9 +338,9 @@ hash_pane() {
 # treated as not-provably-working and surfaces rather than being absorbed.
 # A durable busy record can only describe a window that still exists, so a busy
 # verdict is additionally confirmed through the shared live-classification
-# boundary (fm_busy_classify_live): a positively missing or dead local endpoint
-# returns 1, while a remote, unreadable, ambiguous, or unverified endpoint keeps
-# its record.
+# boundary (fm_busy_classify_live): a positively missing, dead, or unverified
+# local endpoint returns 1, while a remote, unreadable, or ambiguous endpoint
+# keeps its record.
 # <tail40> is the same bounded capture already read for hashing and is
 # consumed only by the Grok-scoped fallback inside the contract.
 window_is_busy() {  # <window> <tail40>
